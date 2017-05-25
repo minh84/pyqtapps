@@ -1,9 +1,9 @@
 import pyaudio
 import wave
- 
+
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
-RATE = 44100
+RATE = 16000
 CHUNK = 1024
 RECORD_SECONDS = 5
 WAVE_OUTPUT_FILENAME = "file.wav"
