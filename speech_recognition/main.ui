@@ -11,22 +11,9 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Speech Spectrogram</string>
+   <string>Speech To Text</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPushButton" name="pbRecord">
-    <property name="geometry">
-     <rect>
-      <x>330</x>
-      <y>430</y>
-      <width>80</width>
-      <height>22</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Record</string>
-    </property>
-   </widget>
    <widget class="QWidget" name="widget" native="true">
     <property name="geometry">
      <rect>
@@ -46,15 +33,37 @@
       <height>201</height>
      </rect>
     </property>
+    <property name="readOnly">
+     <bool>true</bool>
+    </property>
    </widget>
    <widget class="QTextEdit" name="teSTT">
     <property name="geometry">
      <rect>
       <x>20</x>
       <y>220</y>
-      <width>381</width>
-      <height>181</height>
+      <width>771</width>
+      <height>191</height>
      </rect>
+    </property>
+    <property name="readOnly">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QLabel" name="lRecord">
+    <property name="geometry">
+     <rect>
+      <x>330</x>
+      <y>420</y>
+      <width>141</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>To Record Press R</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
     </property>
    </widget>
   </widget>
@@ -64,7 +73,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>24</height>
+     <height>19</height>
     </rect>
    </property>
   </widget>

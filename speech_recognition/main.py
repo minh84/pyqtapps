@@ -12,6 +12,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
 
         self._recoding = False
+        self._processing = False
         self._translate = QCoreApplication.translate
         self._speechRecWorker = RecThread()
         self._speechRecWorker.speechReady.connect(self.recordReady)
@@ -23,8 +24,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if e.isAutoRepeat():
             return
 
-        if e.key() == Qt.Key_R and not self._recoding:
-            self.pbRecord.setText(self._translate("MainWindow", "Recording"))
+        if e.key() == Qt.Key_R and not self._recoding and not self._processing:
+            self.lRecord.setText(self._translate("MainWindow", "Recording..."))
             self._recoding = True
             self.pteDebug.appendPlainText('recoding is activated')
             self._speechRecWorker.record()
@@ -36,15 +37,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def recordReady(self, filename):
         self.pteDebug.appendPlainText('sound is recorded to {}'.format(filename))
         self._recoding = False
-        self.pbRecord.setText(self._translate("MainWindow", "Record"))
+        self.lRecord.setText(self._translate("MainWindow", "STT Processing..."))
 
         # trigger goolge Speech-2-Text
+        self._processing = True
         self._speechRegWorker.speechToText(filename, self._speechRecWorker.encoding)
 
     @pyqtSlot(list)
     def sttReady(self, texts):
+        self.lRecord.setText(self._translate("MainWindow", "To Record Press R"))
+        self._processing = False
         self.teSTT.clear()
-        self.teSTT.append('Speech To Text:')
+        self.teSTT.append('Speech To Text Result:')
         for text in texts:
             self.teSTT.append(text)
 
