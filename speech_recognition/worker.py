@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, pyqtSignal, QThread, QMutex, QMutexLocker, QWaitCondition
 import pyaudio
 import wave
 import tempfile
@@ -6,85 +6,122 @@ import io
 import subprocess
 from google.cloud import speech
 
+class BackgroundThread(QThread):
+    def __init__(self, parent=None):
+        super(BackgroundThread, self).__init__(parent)
 
-class SpeechRecWorker(QObject):
-    speechReady = pyqtSignal(str)
+        self._mutex = QMutex()
+        self._condition = QWaitCondition()
 
-    def __init__(self):
-        super(SpeechRecWorker, self).__init__()
-        self._audio = pyaudio.PyAudio()
+        self._activating = False
+        self._input = None
+        # when program is closed
+        self._abort = False
 
     def __del__(self):
-        self._audio.terminate()
+        self._mutex.lock()
+        self._abort = True
+        self._condition.wakeOne()
+        self._mutex.unlock()
 
-    def record(self):
-        FORMAT = pyaudio.paInt16
-        CHANNELS = 1
-        RATE = 16000
-        CHUNK = 1600
-        RECORD_SECONDS = 5
+        # wait for gracefully stop
+        self.wait()
 
-        stream = self._audio.open(format=FORMAT, channels=CHANNELS,
-                                  rate=RATE, input=True,
-                                  frames_per_buffer=CHUNK)
-        print ("recording...")
-        frames = []
+    def _taskStart(self, taskInput):
+        '''
+        this function should not be called from outside
+        :return: 
+        '''
+        # this must re-implemented in derived class
+        pass
 
-        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-            data = stream.read(CHUNK)
-            frames.append(data)
-        print ("finished recording")
 
-        # stop Recording
-        stream.stop_stream()
-        stream.close()
+    def _taskEnd(self, taskOutput):
+        '''
+        this function should not be called from outside
+        :return: 
+        '''
+        # this must re-implemented in derived class
+        pass
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            WAVE_OUTPUT_FILENAME = f.name
+    def activate(self, input = None):
+        locker = QMutexLocker(self._mutex)
+        if not self._activating:
+            self._activating = True
+            self._input = input
+            # if not running than we start the thread, otherwise we wake it up
+            if not self.isRunning():
+                self.start()
+            else:
+                self._condition.wakeOne()
 
-        waveFile = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
-        waveFile.setnchannels(CHANNELS)
-        waveFile.setsampwidth(self._audio.get_sample_size(FORMAT))
-        waveFile.setframerate(RATE)
-        waveFile.writeframes(b''.join(frames))
-        waveFile.close()
+    def run(self):
+        while True:
+            if self._abort:
+                return
 
-        self.speechReady.emit(WAVE_OUTPUT_FILENAME)
+            self._mutex.lock()
+            activating = self._activating
+            input = self._input
+            self._mutex.unlock()
 
-class RecWorker(QObject):
+            if activating:
+                # start long running task
+                taskOutput = self._taskStart(input)
+
+                # task comleted => report result
+                self._taskEnd(taskOutput)
+
+                # switch off self._activating
+                self._mutex.lock()
+                self._activating = False
+                self._mutex.unlock()
+            else:
+                self._mutex.lock()
+                self._condition.wait(self._mutex)
+                self._mutex.unlock()
+
+
+class RecThread(BackgroundThread):
     speechReady = pyqtSignal(str)
 
-    def __init__(self):
-        super(RecWorker, self).__init__()
+    def __init__(self, parent=None, num_secs=5):
+        super(RecThread, self).__init__(parent)
+
+        self._num_secs = num_secs
+
+    @property
+    def encoding(self):
+        return 'FLAC'
 
     def record(self):
-        FLAC_FILENAME = None
+        self.activate()
+
+    def _taskStart(self, input):
         with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
-            FLAC_FILENAME = f.name
-        cmd = 'rec --channels=1 --bits=16 --rate=16000 {} trim 0 5'.format(FLAC_FILENAME)
-        print ("recording...")
+            flacFilename = f.name
+        cmd = 'rec --channels=1 --bits=16 --rate=16000 {} trim 0 {:d}'.format(flacFilename, self._num_secs)
+        print("recording...")
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         # wait for subprocess to finished
         p.communicate()
-        print ("finished recording")
+        print("finished recording")
+        return flacFilename
 
-        self.speechReady.emit(FLAC_FILENAME)
+    def _taskEnd(self, flacFilename):
+        self.speechReady.emit(flacFilename)
 
-
-class GoogleSTTWorker(QObject):
+class GoogleSTTThread(BackgroundThread):
     textReady = pyqtSignal(list)
 
-    def __init__(self):
-        super(GoogleSTTWorker, self).__init__()
+    def __init__(self, parent=None):
+        super(GoogleSTTThread, self).__init__(parent)
+
+        # create speech client
         self._speechClent = speech.Client()
 
-    def speechToText(self, audioFile, audioEncoding):
-        '''
-        
-        :param audioFile: a file contain raw audio
-        :param audioEncoding: is either 'LINEAR16' or 'FLAC' 
-        :return: 
-        '''
+    def _taskStart(self, input):
+        audioFile, audioEncoding = input
         with io.open(audioFile, 'rb') as audio_file:
             content = audio_file.read()
             sample = self._speechClent.sample(content,
@@ -104,4 +141,16 @@ class GoogleSTTWorker(QObject):
         for alternative in alternatives:
             retval.append(alternative.transcript)
 
-        self.textReady.emit(retval)
+        return retval
+
+    def _taskEnd(self, taskOutput):
+        self.textReady.emit(taskOutput)
+
+    def speechToText(self, audioFile, audioEncoding):
+        '''
+        
+        :param audioFile: a file contain raw audio
+        :param audioEncoding: is either 'LINEAR16' or 'FLAC' 
+        :return: 
+        '''
+        self.activate((audioFile, audioEncoding))

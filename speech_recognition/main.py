@@ -1,9 +1,9 @@
 import sys
 from PyQt5.QtCore import Qt, QCoreApplication, pyqtSlot
 from PyQt5.QtWidgets import QMainWindow, QApplication
-
 from ui_mainwin import Ui_MainWindow
-from worker import SpeechRecWorker, RecWorker, GoogleSTTWorker
+from worker import RecThread, GoogleSTTThread
+
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -13,10 +13,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self._recoding = False
         self._translate = QCoreApplication.translate
-        self._speechRecWorker = RecWorker()
+        self._speechRecWorker = RecThread()
         self._speechRecWorker.speechReady.connect(self.recordReady)
 
-        self._speechRegWorker = GoogleSTTWorker()
+        self._speechRegWorker = GoogleSTTThread()
         self._speechRegWorker.textReady.connect(self.sttReady)
 
     def keyPressEvent(self, e):
@@ -39,7 +39,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.pbRecord.setText(self._translate("MainWindow", "Record"))
 
         # trigger goolge Speech-2-Text
-        self._speechRegWorker.speechToText(filename, 'FLAC')
+        self._speechRegWorker.speechToText(filename, self._speechRecWorker.encoding)
 
     @pyqtSlot(list)
     def sttReady(self, texts):
